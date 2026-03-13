@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>PulseChat</title>
+<!-- Website Icon (Favicon) -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' style='stop-color:%236C63FF'/><stop offset='100%25' style='stop-color:%234F46E5'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23g)'/><text y='.9em' font-size='72' text-anchor='middle' x='50' dominant-baseline='auto' style='font-family:serif'>💬</text></svg>"/>
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' style='stop-color:%236C63FF'/><stop offset='100%25' style='stop-color:%234F46E5'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23g)'/><text y='.9em' font-size='72' text-anchor='middle' x='50' dominant-baseline='auto' style='font-family:serif'>💬</text></svg>"/>
+<meta name="theme-color" content="#6C63FF"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{height:100%;height:-webkit-fill-available}
+body{height:100%;height:-webkit-fill-available;font-family:'Inter',sans-serif;background:#0e0e10;overflow:hidden}
+#root{height:100%;height:-webkit-fill-available}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12);border-radius:4px}
+input,textarea,button,select{font-family:'Inter',sans-serif}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;animation:spin .8s linear infinite}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- ═══════════════════════════════════════════════
+  🔥 PASTE YOUR FIREBASE CONFIG HERE
+  1. console.firebase.google.com → your project
+  2. ⚙️ Project Settings → Your Apps → </>
+  3. Copy & paste the values below
+  Also enable:
+  · Authentication → Email/Password → ON
+  · Build → Realtime Database → Test mode
+═══════════════════════════════════════════════ -->
+<script>
+window.FB_CFG = {
+  apiKey:            "PASTE_apiKey_HERE",
+  authDomain:        "PASTE_authDomain_HERE",
+  databaseURL:       "PASTE_databaseURL_HERE",
+  projectId:         "PASTE_projectId_HERE",
+  storageBucket:     "PASTE_storageBucket_HERE",
+  messagingSenderId: "PASTE_messagingSenderId_HERE",
+  appId:             "PASTE_appId_HERE"
+};
+</script>
+
+<script type="text/babel">
+const {useState,useEffect,useRef,useMemo} = React;
+
+const PALETTE=["#6C63FF","#FF6584","#43C59E","#F5A623","#4ECDC4","#FF6B6B","#A78BFA","#34D399","#F472B6","#60A5FA"];
+const AVATARS =["🦊","🐺","🦁","🐯","🦝","🐸","🦄","🐙","🦋","🐬","🦅","🌟","🐻","🦈","🐧"];
+const genId   =()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
+const fmtTime =ts=>new Date(ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+const fmtDate =ts=>{
+  const d=new Date(ts),now=new Date();
+  if(d.toDateString()===now.toDateString())return"Today";
+  const y=new Date(now);y.setDate(y.getDate()-1);
+  if(d.toDateString()===y.toDateString())return"Yesterday";
+  return d.toLocaleDateString([],{month:"short",day:"numeric"});
+};
+const dmKey=(a,b)=>[a,b].sort().join("_");
+
+const cfg=window.FB_CFG;
+const isReady=cfg&&cfg.apiKey&&!cfg.apiKey.includes("PASTE");
+let auth=null,db=null;
+if(isReady){try{firebase.initializeApp(cfg);auth=firebase.auth();db=firebase.database();}catch(e){console.error(e);}}
+
+/* ── Setup Screen ── */
+function SetupScreen(){
+  return(
+    <div style={{minHeight:"100dvh",background:"#0e0e10",display:"flex",alignItems:"center",
+      justifyContent:"center",padding:20,overflowY:"auto",
+      backgroundImage:"radial-gradient(ellipse at 30% 40%,#1a0a3e 0%,transparent 55%)"}}>
+      <div style={{maxWidth:480,width:"100%",background:"rgba(255,255,255,0.04)",
+        border:"1px solid rgba(255,255,255,0.08)",borderRadius:20,padding:"36px 28px"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontSize:44,marginBottom:8}}>🔥</div>
+          <div style={{fontSize:20,fontWeight:700,color:"#fff"}}>Firebase Setup Required</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:5,letterSpacing:2}}>FREE · NO CREDIT CARD</div>
+        </div>
+        {[
+          ["1","Create Firebase project",<>Go to <a href="https://console.firebase.google.com" target="_blank" style={{color:"#6C63FF"}}>console.firebase.google.com</a> → Add project</>],
+          ["2","Enable Email/Password","Authentication → Sign-in method → Email/Password → Enable"],
+          ["3","Enable Realtime Database","Build → Realtime Database → Create → Test mode"],
+          ["4","Paste your config","⚙️ Project Settings → Your apps → </> → paste values here"],
+        ].map(([n,t,d])=>(
+          <div key={n} style={{display:"flex",gap:12,marginBottom:16,alignItems:"flex-start"}}>
+            <div style={{width:26,height:26,borderRadius:"50%",flexShrink:0,marginTop:1,
+              background:"linear-gradient(135deg,#6C63FF,#4F46E5)",
+              display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:700}}>{n}</div>
+            <div>
+              <div style={{color:"#fff",fontSize:13,fontWeight:600,marginBottom:2}}>{t}</div>
+              <div style={{color:"rgba(255,255,255,0.38)",fontSize:12,lineHeight:1.6}}>{d}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Auth Screen ── */
+function AuthScreen({onAuth}){
+  const [mode,setMode]=useState("login");
+  const [name,setName]=useState("");
+  const [email,setEmail]=useState("");
+  const [pass,setPass]=useState("");
+  const [loading,setLoad]=useState(false);
+  const [error,setError]=useState("");
+  const [showPass,setShowP]=useState(false);
+
+  const submit=async()=>{
+    setError("");
+    if(!email.trim()||!pass.trim()){setError("Fill in all fields");return;}
+    if(mode==="register"&&!name.trim()){setError("Enter your name");return;}
+    if(pass.length<6){setError("Password must be at least 6 characters");return;}
+    setLoad(true);
+    try{
+      if(mode==="register"){
+        const res=await auth.createUserWithEmailAndPassword(email.trim(),pass);
+        const uid=res.user.uid;
+        const ci=name.charCodeAt(0)%PALETTE.length;
+        const profile={uid,name:name.trim(),email:res.user.email,
+          color:PALETTE[ci],avatar:AVATARS[ci%AVATARS.length],joinedAt:Date.now()};
+        await db.ref(`users/${uid}`).set(profile);
+        onAuth(profile);
+      }else{
+        const res=await auth.signInWithEmailAndPassword(email.trim(),pass);
+        const snap=await db.ref(`users/${res.user.uid}`).once("value");
+        if(snap.exists())onAuth(snap.val());
+        else setError("Account not found. Please register.");
+      }
+    }catch(e){
+      const m={"auth/email-already-in-use":"Email already registered. Try logging in.",
+        "auth/user-not-found":"No account with this email.",
+        "auth/wrong-password":"Wrong password.",
+        "auth/invalid-email":"Enter a valid email.",
+        "auth/too-many-requests":"Too many attempts. Try later.",
+        "auth/invalid-credential":"Wrong email or password."};
+      setError(m[e.code]||e.message||"Something went wrong");
+    }
+    setLoad(false);
+  };
+
+  const inp=(x={})=>({width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.06)",
+    border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,color:"#fff",fontSize:16,
+    outline:"none",display:"block",marginBottom:12,...x});
+
+  return(
+    <div style={{minHeight:"100dvh",background:"#0e0e10",display:"flex",
+      alignItems:"center",justifyContent:"center",padding:20,overflowY:"auto",
+      backgroundImage:"radial-gradient(ellipse at 20% 50%,#1a0a3e 0%,transparent 60%)"}}>
+      <div style={{width:"100%",maxWidth:380,background:"rgba(255,255,255,0.03)",
+        border:"1px solid rgba(255,255,255,0.08)",borderRadius:22,padding:"40px 28px"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontSize:44,marginBottom:8,filter:"drop-shadow(0 0 24px rgba(108,99,255,.7))"}}>💬</div>
+          <div style={{fontSize:26,fontWeight:700,color:"#fff"}}>Pulse<span style={{color:"#6C63FF"}}>Chat</span></div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginTop:5,letterSpacing:3}}>
+            {mode==="login"?"WELCOME BACK":"CREATE ACCOUNT"}
+          </div>
+        </div>
+
+        <div style={{display:"flex",background:"rgba(255,255,255,0.05)",borderRadius:12,padding:4,marginBottom:20}}>
+          {["login","register"].map(m=>(
+            <button key={m} onClick={()=>{setMode(m);setError("");}}
+              style={{flex:1,padding:"9px",border:"none",borderRadius:9,cursor:"pointer",
+                background:mode===m?"linear-gradient(135deg,#6C63FF,#4F46E5)":"transparent",
+                color:mode===m?"#fff":"rgba(255,255,255,0.4)",fontSize:13,fontWeight:600}}>
+              {m==="login"?"Login":"Register"}
+            </button>
+          ))}
+        </div>
+
+        {mode==="register"&&<input value={name} onChange={e=>setName(e.target.value)}
+          placeholder="Your name" style={inp()}
+          onFocus={e=>e.target.style.borderColor="rgba(108,99,255,.6)"}
+          onBlur={e=>e.target.style.borderColor="rgba(255,255,255,.1)"}/>}
+
+        <input value={email} onChange={e=>setEmail(e.target.value)}
+          placeholder="Email address" type="email" style={inp()}
+          onFocus={e=>e.target.style.borderColor="rgba(108,99,255,.6)"}
+          onBlur={e=>e.target.style.borderColor="rgba(255,255,255,.1)"}/>
+
+        <div style={{position:"relative",marginBottom:12}}>
+          <input value={pass} onChange={e=>setPass(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&submit()}
+            placeholder="Password (min 6 chars)"
+            type={showPass?"text":"password"}
+            style={inp({marginBottom:0,paddingRight:44})}
+            onFocus={e=>e.target.style.borderColor="rgba(108,99,255,.6)"}
+            onBlur={e=>e.target.style.borderColor="rgba(255,255,255,.1)"}/>
+          <button onClick={()=>setShowP(s=>!s)}
+            style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",
+              background:"none",border:"none",color:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:16}}>
+            {showPass?"🙈":"👁"}
+          </button>
+        </div>
+
+        {mode==="register"&&name&&(
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14,
+            padding:"10px 14px",background:"rgba(108,99,255,0.08)",
+            border:"1px solid rgba(108,99,255,0.2)",borderRadius:12}}>
+            <div style={{width:36,height:36,borderRadius:"50%",flexShrink:0,
+              background:PALETTE[name.charCodeAt(0)%PALETTE.length]+"33",
+              border:`2px solid ${PALETTE[name.charCodeAt(0)%PALETTE.length]}`,
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
+              {AVATARS[name.charCodeAt(0)%AVATARS.length]}
+            </div>
+            <div>
+              <div style={{color:"#fff",fontWeight:600,fontSize:13}}>{name}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>Your profile preview</div>
+            </div>
+          </div>
+        )}
+
+        {error&&<div style={{color:"#FF6B6B",fontSize:12,marginBottom:12,padding:"10px 14px",
+          background:"rgba(255,107,107,0.1)",border:"1px solid rgba(255,107,107,0.2)",
+          borderRadius:10,lineHeight:1.5}}>{error}</div>}
+
+        <button onClick={submit} disabled={loading}
+          style={{width:"100%",padding:"14px",background:"linear-gradient(135deg,#6C63FF,#4F46E5)",
+            border:"none",borderRadius:12,color:"#fff",fontSize:14,fontWeight:700,
+            cursor:"pointer",opacity:loading?.7:1}}>
+          {loading?<span>PLEASE WAIT <span className="spin">⟳</span></span>
+            :mode==="login"?"LOGIN →":"CREATE ACCOUNT →"}
+        </button>
+
+        <div style={{marginTop:16,textAlign:"center",fontSize:12,color:"rgba(255,255,255,0.25)"}}>
+          {mode==="login"
+            ?<>No account? <span style={{color:"#6C63FF",cursor:"pointer"}} onClick={()=>{setMode("register");setError("");}}>Register</span></>
+            :<>Have account? <span style={{color:"#6C63FF",cursor:"pointer"}} onClick={()=>{setMode("login");setError("");}}>Login</span></>
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Sidebar Row ── */
+function ChatRow({icon,name,sub,color,shape,active,badge,time,onClick}){
+  return(
+    <div onClick={onClick} style={{display:"flex",alignItems:"center",gap:12,
+      padding:"10px 12px",borderRadius:12,cursor:"pointer",marginBottom:2,
+      background:active?"rgba(108,99,255,0.15)":"transparent",
+      border:active?"1px solid rgba(108,99,255,0.25)":"1px solid transparent"}}>
+      <div style={{position:"relative",flexShrink:0}}>
+        <div style={{width:46,height:46,borderRadius:shape==="square"?12:"50%",
+          background:color+"33",border:`2px solid ${color}55`,
+          display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>
+          {icon}
+        </div>
+        {badge>0&&<div style={{position:"absolute",top:-3,right:-3,minWidth:18,height:18,
+          borderRadius:9,background:"#6C63FF",padding:"0 4px",fontSize:10,color:"#fff",
+          fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {badge>9?"9+":badge}
+        </div>}
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+          <span style={{color:"#fff",fontWeight:600,fontSize:14,
+            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+          {time&&<span style={{fontSize:11,color:"rgba(255,255,255,0.25)",flexShrink:0,marginLeft:8}}>
+            {fmtTime(time)}</span>}
+        </div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",
+          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sub}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Main Chat App ── */
+function ChatApp({user,onSignOut}){
+  const [activeChat,setActiveChat]=useState(null);
+  const [messages,setMessages]=useState([]);
+  const [users,setUsers]=useState({});
+  const [dmPreviews,setDmPreviews]=useState({});
+  const [unread,setUnread]=useState({});
+  const [input,setInput]=useState("");
+  const [search,setSearch]=useState("");
+  const [desktopSidebar,setDesktopSidebar]=useState(true);
+  const bottomRef=useRef(null);
+  const presTimer=useRef(null);
+  const activeChatRef=useRef(null);
+
+  // Mobile = screen width < 768
+  const [isMobile,setIsMobile]=useState(()=>window.innerWidth<768);
+  useEffect(()=>{
+    const fn=()=>setIsMobile(window.innerWidth<768);
+    window.addEventListener("resize",fn);
+    return()=>window.removeEventListener("resize",fn);
+  },[]);
+
+  useEffect(()=>{ activeChatRef.current=activeChat; },[activeChat]);
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages]);
+
+  // Presence
+  useEffect(()=>{
+    const write=()=>db.ref(`presence/${user.uid}`).set(
+      {uid:user.uid,name:user.name,color:user.color,avatar:user.avatar,ts:Date.now()});
+    write();
+    presTimer.current=setInterval(write,10000);
+    db.ref(`presence/${user.uid}`).onDisconnect().remove();
+    return()=>{clearInterval(presTimer.current);db.ref(`presence/${user.uid}`).remove();};
+  },[]);
+
+  // All users
+  useEffect(()=>{
+    const ref=db.ref("users");
+    ref.on("value",snap=>setUsers(snap.val()||{}));
+    return()=>ref.off();
+  },[]);
+
+  // Messages for active chat
+  useEffect(()=>{
+    if(!activeChat)return;
+    const path=activeChat.type==="group"?"groupMessages":`dms/${dmKey(user.uid,activeChat.id)}`;
+    const ref=db.ref(path).limitToLast(120);
+    ref.on("value",snap=>{
+      const data=snap.val()||{};
+      setMessages(Object.values(data).sort((a,b)=>a.ts-b.ts));
+    });
+    setUnread(p=>({...p,[activeChat.id]:0}));
+    return()=>ref.off();
+  },[activeChat]);
+
+  // DM previews & unread
+  useEffect(()=>{
+    const uids=Object.keys(users).filter(u=>u!==user.uid);
+    const offs=[];
+    uids.forEach(uid=>{
+      const ref=db.ref(`dms/${dmKey(user.uid,uid)}`).limitToLast(1);
+      const fn=snap=>{
+        const data=snap.val();if(!data)return;
+        const last=Object.values(data)[0];
+        setDmPreviews(p=>({...p,[uid]:last}));
+        if(last.senderUid!==user.uid&&activeChatRef.current?.id!==uid)
+          setUnread(p=>({...p,[uid]:(p[uid]||0)+1}));
+      };
+      ref.on("value",fn);
+      offs.push(()=>ref.off("value",fn));
+    });
+    return()=>offs.forEach(f=>f());
+  },[users]);
+
+  const send=async()=>{
+    const text=input.trim();if(!text||!activeChat)return;
+    setInput("");
+    const msg={id:genId(),text,senderUid:user.uid,senderName:user.name,
+      color:user.color,avatar:user.avatar,ts:Date.now()};
+    const path=activeChat.type==="group"?"groupMessages":`dms/${dmKey(user.uid,activeChat.id)}`;
+    await db.ref(path).push(msg);
+  };
+
+  const openChat=chat=>{
+    setActiveChat(chat);
+    if(chat.id!=="main")setUnread(p=>({...p,[chat.id]:0}));
+  };
+
+  const goBack=()=>{ setActiveChat(null); setMessages([]); };
+
+  const totalUnread=Object.values(unread).reduce((a,b)=>a+b,0);
+
+  const filteredUsers=useMemo(()=>
+    Object.values(users).filter(u=>u.uid!==user.uid&&
+      u.name?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b)=>(dmPreviews[b.uid]?.ts||0)-(dmPreviews[a.uid]?.ts||0))
+  ,[users,search,dmPreviews]);
+
+  const grouped=useMemo(()=>{
+    const g=[];let ld="";
+    messages.forEach(m=>{
+      const d=fmtDate(m.ts);
+      if(d!==ld){g.push({type:"date",label:d});ld=d;}
+      g.push({type:"msg",...m});
+    });
+    return g;
+  },[messages]);
+
+  // ── On mobile: show SIDEBAR (contact list) OR CHAT, never both ──
+  // ── On desktop: show both side by side ──
+  const showingSidebar = isMobile ? !activeChat : true;
+  const showingChat    = isMobile ? !!activeChat : true;
+
+  const Sidebar = (
+    <div style={{
+      width: isMobile ? "100%" : (desktopSidebar ? 300 : 0),
+      minWidth: isMobile ? "100%" : (desktopSidebar ? 300 : 0),
+      height:"100%", display:"flex", flexDirection:"column",
+      background:"#13131a",
+      borderRight: isMobile ? "none" : "1px solid rgba(255,255,255,0.06)",
+      flexShrink:0, overflow:"hidden",
+      transition: isMobile ? "none" : "all .25s ease"
+    }}>
+      {/* Profile header */}
+      <div style={{padding:"14px 14px 12px",borderBottom:"1px solid rgba(255,255,255,0.06)",
+        paddingTop: isMobile ? "calc(14px + env(safe-area-inset-top))" : "14px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <div style={{width:42,height:42,borderRadius:"50%",flexShrink:0,
+            background:user.color+"33",border:`2px solid ${user.color}`,
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>
+            {user.avatar}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:"#fff",fontWeight:700,fontSize:15,
+              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",
+              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</div>
+          </div>
+          <button onClick={onSignOut}
+            style={{padding:"6px 12px",background:"rgba(255,107,107,0.1)",
+              border:"1px solid rgba(255,107,107,0.2)",borderRadius:8,
+              color:"#FF6B6B",fontSize:12,cursor:"pointer",flexShrink:0,fontWeight:600}}>
+            Sign out
+          </button>
+        </div>
+        <div style={{position:"relative"}}>
+          <span style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",
+            fontSize:14,color:"rgba(255,255,255,0.25)"}}>🔍</span>
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Search people..."
+            style={{width:"100%",padding:"10px 12px 10px 34px",
+              background:"rgba(255,255,255,0.05)",
+              border:"1px solid rgba(255,255,255,0.08)",
+              borderRadius:10,color:"#fff",fontSize:14,outline:"none"}}/>
+        </div>
+      </div>
+
+      {/* Chat list */}
+      <div style={{flex:1,overflowY:"auto",padding:"8px"}}>
+        <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",
+          letterSpacing:2,padding:"6px 10px 4px",fontWeight:600}}>CHANNELS</div>
+        <ChatRow icon="🌐" name="Global Chat" sub="Everyone can see this"
+          color="#6C63FF" shape="square" active={activeChat?.id==="main"}
+          onClick={()=>openChat({type:"group",id:"main",name:"Global Chat",color:"#6C63FF",avatar:"🌐"})}/>
+
+        <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",
+          letterSpacing:2,padding:"12px 10px 4px",fontWeight:600}}>DIRECT MESSAGES</div>
+
+        {filteredUsers.length===0&&!search&&(
+          <div style={{padding:"20px 10px",textAlign:"center",
+            color:"rgba(255,255,255,0.2)",fontSize:13,lineHeight:1.8}}>
+            No other users yet.<br/>Share your link so friends can join!
+          </div>
+        )}
+        {filteredUsers.length===0&&search&&(
+          <div style={{padding:"20px 10px",textAlign:"center",
+            color:"rgba(255,255,255,0.2)",fontSize:13}}>No users found</div>
+        )}
+        {filteredUsers.map(u=>{
+          const last=dmPreviews[u.uid];
+          return(
+            <ChatRow key={u.uid} icon={u.avatar} name={u.name} color={u.color} shape="circle"
+              sub={last?(last.senderUid===user.uid?"You: ":"")+last.text:u.email}
+              active={activeChat?.id===u.uid} badge={unread[u.uid]||0} time={last?.ts}
+              onClick={()=>openChat({type:"dm",id:u.uid,name:u.name,color:u.color,avatar:u.avatar})}/>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const ChatPanel = (
+    <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,
+      height:"100%",background:"#0e0e10"}}>
+
+      {/* ── TOP BAR ── always visible ── */}
+      <div style={{
+        height: isMobile ? "calc(56px + env(safe-area-inset-top))" : "56px",
+        paddingTop: isMobile ? "env(safe-area-inset-top)" : "0",
+        padding: isMobile
+          ? `env(safe-area-inset-top) 14px 0 14px`
+          : "0 16px",
+        display:"flex", alignItems:"center",
+        justifyContent:"space-between",
+        flexShrink:0,
+        borderBottom:"1px solid rgba(255,255,255,0.06)",
+        background:"#13131a",
+        zIndex:10
+      }}>
+        <div style={{display:"flex",alignItems:"center",gap:12,
+          height:56, flex:1, minWidth:0}}>
+
+          {/* Back arrow on mobile, hamburger on desktop */}
+          {isMobile ? (
+            <button onClick={goBack}
+              style={{width:38,height:38,background:"rgba(255,255,255,0.06)",
+                border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,
+                color:"#fff",fontSize:20,cursor:"pointer",flexShrink:0,
+                display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+              ←
+            </button>
+          ) : (
+            <button onClick={()=>setDesktopSidebar(s=>!s)}
+              style={{width:38,height:38,background:"rgba(255,255,255,0.06)",
+                border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,
+                color:"rgba(255,255,255,0.7)",fontSize:16,cursor:"pointer",flexShrink:0,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                position:"relative"}}>
+              ☰
+              {!desktopSidebar&&totalUnread>0&&(
+                <div style={{position:"absolute",top:-4,right:-4,width:17,height:17,
+                  borderRadius:"50%",background:"#6C63FF",fontSize:9,color:"#fff",
+                  display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>
+                  {totalUnread>9?"9+":totalUnread}
+                </div>
+              )}
+            </button>
+          )}
+
+          {/* Chat info */}
+          {activeChat&&(
+            <>
+              <div style={{width:38,height:38,borderRadius:activeChat.type==="group"?10:"50%",
+                background:activeChat.color+"33",border:`2px solid ${activeChat.color}55`,
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                {activeChat.avatar}
+              </div>
+              <div style={{minWidth:0}}>
+                <div style={{color:"#fff",fontWeight:700,fontSize:15,
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {activeChat.name}
+                </div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>
+                  {activeChat.type==="group"
+                    ?`${Object.keys(users).length} members`
+                    :"Private message"}
+                </div>
+              </div>
+            </>
+          )}
+          {!activeChat&&!isMobile&&(
+            <div style={{color:"rgba(255,255,255,0.3)",fontSize:14}}>Select a chat</div>
+          )}
+        </div>
+
+        {/* Live dot */}
+        <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+          <div style={{width:7,height:7,borderRadius:"50%",background:"#34D399",
+            boxShadow:"0 0 8px #34D399",animation:"blink 2s infinite"}}/>
+          <span style={{fontSize:10,color:"rgba(255,255,255,0.25)",letterSpacing:1}}>LIVE</span>
+        </div>
+      </div>
+
+      {/* ── MESSAGES ── */}
+      <div style={{flex:1,overflowY:"auto",padding:"14px 16px 8px"}}>
+        {!activeChat&&(
+          <div style={{height:"100%",display:"flex",flexDirection:"column",
+            alignItems:"center",justifyContent:"center",gap:12}}>
+            <div style={{fontSize:56}}>💬</div>
+            <div style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,0.2)"}}>
+              Welcome, {user.name}!
+            </div>
+            <div style={{fontSize:13,textAlign:"center",lineHeight:1.9,maxWidth:280,
+              color:"rgba(255,255,255,0.15)"}}>
+              Open <span style={{color:"#6C63FF"}}>Global Chat</span> or pick someone for a{" "}
+              <span style={{color:"#34D399"}}>private message</span>
+            </div>
+          </div>
+        )}
+
+        {activeChat&&grouped.map((item,i)=>{
+          if(item.type==="date") return(
+            <div key={i} style={{textAlign:"center",margin:"16px 0 10px"}}>
+              <span style={{fontSize:11,color:"rgba(255,255,255,0.25)",
+                background:"rgba(255,255,255,0.05)",padding:"4px 14px",borderRadius:20}}>
+                {item.label}
+              </span>
+            </div>
+          );
+          const isMe=item.senderUid===user.uid;
+          const prev=grouped[i-1];
+          const showHead=!prev||prev.type==="date"||prev.senderUid!==item.senderUid;
+          return(
+            <div key={item.id||i} style={{display:"flex",
+              flexDirection:isMe?"row-reverse":"row",
+              alignItems:"flex-end",gap:8,marginTop:showHead?14:3}}>
+              {showHead
+                ?<div style={{width:32,height:32,borderRadius:"50%",flexShrink:0,
+                    background:item.color+"33",border:`2px solid ${item.color}44`,
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>
+                  {item.avatar}
+                </div>
+                :<div style={{width:32,flexShrink:0}}/>
+              }
+              <div style={{maxWidth:isMobile?"78%":"65%"}}>
+                {showHead&&!isMe&&<div style={{fontSize:11,marginBottom:4,
+                  color:item.color,fontWeight:600}}>
+                  {item.senderName}
+                  <span style={{color:"rgba(255,255,255,0.2)",fontWeight:400,marginLeft:8}}>
+                    {fmtTime(item.ts)}
+                  </span>
+                </div>}
+                <div style={{padding:"10px 14px",wordBreak:"break-word",fontSize:14,
+                  lineHeight:1.55,color:"#f0f0f0",
+                  background:isMe?`linear-gradient(135deg,${item.color}28,${item.color}18)`
+                    :"rgba(255,255,255,0.06)",
+                  border:isMe?`1px solid ${item.color}30`:"1px solid rgba(255,255,255,0.07)",
+                  borderRadius:isMe?"16px 4px 16px 16px":"4px 16px 16px 16px"}}>
+                  {item.text}
+                </div>
+                {isMe&&<div style={{fontSize:10,color:"rgba(255,255,255,0.2)",
+                  textAlign:"right",marginTop:3}}>{fmtTime(item.ts)}</div>}
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* ── INPUT ── */}
+      {activeChat&&(
+        <div style={{
+          padding:"10px 14px",
+          paddingBottom: isMobile ? "calc(10px + env(safe-area-inset-bottom))" : "14px",
+          borderTop:"1px solid rgba(255,255,255,0.06)",
+          background:"#13131a", flexShrink:0
+        }}>
+          <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+            <textarea value={input}
+              onChange={e=>setInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
+              placeholder={activeChat.type==="group"?"Message everyone…":`Message ${activeChat.name}…`}
+              rows={1}
+              style={{flex:1,padding:"12px 14px",resize:"none",
+                background:"rgba(255,255,255,0.07)",
+                border:"1px solid rgba(255,255,255,0.12)",
+                borderRadius:14,color:"#fff",fontSize:16,
+                outline:"none",lineHeight:1.5,maxHeight:120}}
+              onFocus={e=>e.target.style.borderColor="rgba(108,99,255,.5)"}
+              onBlur={e=>e.target.style.borderColor="rgba(255,255,255,.12)"}
+            />
+            <button onClick={send} disabled={!input.trim()}
+              style={{width:46,height:46,flexShrink:0,border:"none",borderRadius:14,
+                fontSize:20,cursor:input.trim()?"pointer":"default",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                background:input.trim()?"linear-gradient(135deg,#6C63FF,#4F46E5)":"rgba(255,255,255,0.05)",
+                color:input.trim()?"#fff":"rgba(255,255,255,0.2)"}}>↑</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return(
+    <div style={{height:"100dvh",display:"flex",background:"#0e0e10",overflow:"hidden"}}>
+      {/* Mobile: show EITHER sidebar OR chat */}
+      {isMobile ? (
+        showingSidebar ? Sidebar : ChatPanel
+      ) : (
+        /* Desktop: show both */
+        <>
+          {desktopSidebar && Sidebar}
+          {ChatPanel}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── Root ── */
+function Root(){
+  const [user,setUser]=useState(null);
+  const [checking,setChecking]=useState(true);
+  useEffect(()=>{
+    if(!isReady||!auth){setChecking(false);return;}
+    return auth.onAuthStateChanged(async fbUser=>{
+      if(fbUser){
+        try{
+          const snap=await db.ref(`users/${fbUser.uid}`).once("value");
+          if(snap.exists())setUser(snap.val());
+          else setUser(null);
+        }catch{setUser(null);}
+      }else setUser(null);
+      setChecking(false);
+    });
+  },[]);
+
+  if(!isReady)return<SetupScreen/>;
+  if(checking)return(
+    <div style={{height:"100dvh",background:"#0e0e10",display:"flex",
+      alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <div style={{fontSize:48,filter:"drop-shadow(0 0 20px rgba(108,99,255,.7))"}}>💬</div>
+      <div style={{color:"rgba(255,255,255,0.3)",fontSize:12,letterSpacing:3}}>LOADING...</div>
+    </div>
+  );
+  if(!user)return<AuthScreen onAuth={setUser}/>;
+  return<ChatApp user={user} onSignOut={()=>{auth.signOut();setUser(null);}}/>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Root/>);
+</script>
+</body>
+</html>
