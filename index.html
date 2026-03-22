@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>PulseChat Classic</title>
+<link rel="icon" type="image/png" href="pulsechat-logo.png"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+<style>
+:root {
+  --bg-sidebar: #13141a;
+  --bg-chat: #0b0c10;
+  --bg-input: #17181e;
+  --bg-bubble: #1a1b26;
+  --bg-hover: #1c1d24;
+  --border: #2a2b36;
+  --border-active: #3b3c54;
+  --primary: #3b82f6;
+  --text: #f1f1f1;
+  --muted: #8b8d98;
+  --danger: #ef4444;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+  height: 100%;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-chat);
+  color: var(--text);
+  overflow: hidden;
+}
+#root { height: 100%; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2b36; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #3b3c54; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.animate-spin { display: inline-block; animation: spin 1s linear infinite; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.chat-transition { animation: fadeInUp 0.4s ease-out forwards; }
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.btn-primary:hover:not(:disabled) { opacity: 0.9; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.input-base {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 14px;
+  border-radius: 8px;
+  outline: none;
+  width: 100%;
+  font-size: 14px;
+}
+.input-base:focus { border-color: var(--primary); }
+
+.chat-bubble {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--bg-bubble);
+  border: 1px solid var(--border);
+  max-width: 100%;
+  width: fit-content;
+  word-wrap: break-word;
+}
+.chat-bubble.me { background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3); }
+
+.sidebar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.sidebar-row:hover { background: var(--bg-hover); border-color: var(--border); }
+.sidebar-row.active { background: #232433; border-color: var(--border-active); }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scaleUp { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.modal-content { animation: scaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+.action-btn {
+  background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--border);
+  width: 32px; height: 32px; border-radius: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.action-btn:hover { background: rgba(255,255,255,0.1); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+window.FB_CFG = {
+  apiKey:            "AIzaSyAs-M8VVM_hN3smKLmqWSowuUrOFeKVA5s",
+  authDomain:        "pulsechat-ae532.firebaseapp.com",
+  databaseURL:       "https://pulsechat-ae532-default-rtdb.firebaseio.com",
+  projectId:         "pulsechat-ae532",
+  storageBucket:     "pulsechat-ae532.firebasestorage.app",
+  messagingSenderId: "605174393419",
+  appId:             "1:605174393419:web:37b2eaae15b294bf757bce"
+};
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+const PALETTE=["#3b82f6","#8B5CF6","#EC4899","#F43F5E","#F59E0B","#10B981","#06B6D4","#4F46E5"];
+const AVATARS=["🦊","🐺","🦁","🐯","🦝","🐸","🦄","🐙","🦋","🐬","🦅","🌟","🐻","🦈","🐧"];
+const genId=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
+const fmtTime=ts=>new Date(ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+const dmKey=(a,b)=>[a,b].sort().join("_");
+
+async function compressImage(file, max_dim=1200, quality=0.7) {
+  if(!file || !file.type || !file.type.startsWith("image/") || file.type==="image/heic" || file.type==="image/heif" || file.type==="image/gif" || file.type==="image/svg+xml") return file;
+  return new Promise(res=>{
+    const reader = new FileReader();
+    reader.onload=e=>{
+      const img = new Image();
+      img.onload=()=>{
+        const canvas = document.createElement("canvas");
+        let w = img.width, h = img.height;
+        if(w>max_dim || h>max_dim) {
+          if(w>h) { h=Math.round(h*(max_dim/w)); w=max_dim; }
+          else { w=Math.round(w*(max_dim/h)); h=max_dim; }
+        }
+        canvas.width=w; canvas.height=h;
+        const ctx=canvas.getContext("2d");
+        ctx.drawImage(img,0,0,w,h);
+        canvas.toBlob(b => {
+          if (!b) return res(file);
+          try { res(new File([b], file.name, {type:"image/jpeg", lastModified:Date.now()})); }
+          catch(err) { res(b); }
+        }, "image/jpeg", quality);
+      };
+      img.onerror=()=>res(file);
+      img.src=e.target.result;
+    };
+    reader.onerror=()=>res(file);
+    reader.readAsDataURL(file);
+  });
+}
+
+function saveMedia(msg) {
+  try {
+    if (msg.fileUrl.startsWith('data:')) {
+      const a = document.createElement("a");
+      a.href = msg.fileUrl; a.download = msg.fileName || "attachment"; a.click();
+    } else {
+      fetch(msg.fileUrl).then(r=>r.blob()).then(b=>{
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(b); a.download = msg.fileName || "attachment"; a.click();
+      });
+    }
+  } catch(e) { alert("Could not save media."); }
+}
+
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(e => {}));
+
+function showNotify(title, options) {
+  try {
+    if (Notification.permission === "granted") {
+      if ('serviceWorker' in navigator) navigator.serviceWorker.ready.then(reg => { if (reg && reg.showNotification) reg.showNotification(title, options).catch(()=>{}); else try { new Notification(title, options); } catch(e){} }).catch(()=>{ try { new Notification(title, options); } catch(e){} });
+      else try { new Notification(title, options); } catch(e){}
+    }
+  } catch (err) {}
+}
+
+const cfg = window.FB_CFG;
+const isReady = cfg && cfg.apiKey && !cfg.apiKey.includes("PASTE");
+let auth=null, db=null;
+if(isReady){
+  try {
+    if(!firebase.apps.length) firebase.initializeApp(cfg);
+    auth = firebase.auth(); db = firebase.database();
+  } catch(e) {}
+}
+
+/* ── UI Components ── */
+function NotificationBell() {
+  const [perm, setPerm] = useState("default");
+  useEffect(() => { if ("Notification" in window) setPerm(Notification.permission); }, []);
+  const reqNotify = () => {
+    if (!("Notification" in window)) return alert("Notifications not supported in this browser.");
+    try { const p = Notification.requestPermission(perm => setPerm(perm)); if (p && p.then) p.then(perm => setPerm(perm)); } catch(e) {}
+  };
+  if(!("Notification" in window) || perm==="granted") return null;
+
+  return (
+    <button onClick={reqNotify} title="Enable Notifications" style={{ background:"transparent", border:"none", color:"var(--danger)", fontSize:20, cursor:"pointer" }}>🔕</button>
+  );
+}
+
+function Avatar({ emoji, color, size = 38, badge }) {
+  return (
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <div style={{
+        width: size, height: size, borderRadius: "50%",
+        background: `linear-gradient(135deg, ${color}33, ${color}11)`,
+        border: `1px solid ${color}aa`,
+        display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.45
+      }}>{emoji}</div>
+      {badge > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, background: "#8b5cf6", color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{badge > 9 ? "9+" : badge}</div>}
+    </div>
+  );
+}
+
+/* ── Modals ── */
+function Lightbox({ msg, onClose, onForward }) {
+  if (!msg) return null;
+  const [showMenu, setShowMenu] = useState(false);
+  return (
+    <div className="modal-overlay" style={{flexDirection: "column"}} onClick={onClose}>
+      <div style={{ width: "100%", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", position: "absolute", top: 0, right: 0 }} onClick={e=>e.stopPropagation()}>
+        <button onClick={onClose} style={{background:"transparent", border:"none", color:"white", fontSize:28, cursor:"pointer"}}>✕</button>
+        <div style={{position: 'relative'}}>
+          <button onClick={() => setShowMenu(!showMenu)} style={{background:"rgba(255,255,255,0.1)", border:"1px solid var(--border)", borderRadius: 8, padding: "8px 12px", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap: 6}}>⋮ Action</button>
+          
+          {showMenu && (
+            <div style={{position: 'absolute', top: 40, right: 0, background: '#1c1d24', border: '1px solid var(--border)', borderRadius: 8, width: 160, zIndex: 1000}}>
+               <button onClick={() => { onForward(msg); setShowMenu(false); }} style={{display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', color: 'white', border: 'none', borderBottom: '1px solid var(--border)', textAlign: 'left', cursor:'pointer', fontSize: 14}}>➦ Forward Share</button>
+               <button onClick={() => { saveMedia(msg); setShowMenu(false); }} style={{display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor:'pointer', fontSize: 14}}>⬇ Save File</button>
+            </div>
+          )}
+        </div>
+      </div>
+      <img className="modal-content" src={msg.fileUrl} style={{ maxWidth: "100%", maxHeight: "85vh", objectFit: "contain", marginTop: 20 }} onClick={e=>e.stopPropagation()} />
+    </div>
+  );
+}
+
+const ActionDropdown = ({ menu, onClose, onForward }) => {
+  if (!menu) return null;
+  const winW = window.innerWidth;
+  const useR = menu.x + 160 > winW - 20;
+  return (
+    <div className="modal-overlay" style={{background: "transparent"}} onClick={onClose} onContextMenu={e=>e.preventDefault()}>
+      <div className="modal-content" style={{ position: 'absolute', top: menu.y, left: useR ? undefined : menu.x, right: useR ? (winW - menu.x) : undefined, background: '#1c1d24', border: '1px solid var(--border)', borderRadius: 8, padding: 4, width: 160, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }} onClick={e=>e.stopPropagation()}>
+        <button onClick={() => { onForward(menu.msg); onClose(); }} style={{display: 'block', width: '100%', padding: '10px 12px', background: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor:'pointer', fontSize: 14, borderRadius: 4}}>Forward Share</button>
+        <button onClick={() => { saveMedia(menu.msg); onClose(); }} style={{display: 'block', width: '100%', padding: '10px 12px', background: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor:'pointer', fontSize: 14, borderRadius: 4}}>Save Document</button>
+      </div>
+    </div>
+  );
+};
+
+function ShareModal({ msg, users, userUid, onClose, onForward }) {
+  if (!msg) return null;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{ width: 400, background: 'var(--bg-chat)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, maxHeight: "80vh", display: "flex", flexDirection: "column" }} onClick={e=>e.stopPropagation()}>
+        <h3 style={{marginTop:0, marginBottom:16}}>Forward to...</h3>
+        <div style={{ flex: 1, overflowY: "auto", borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+          <div className="sidebar-row" onClick={() => onForward({type: "group", id: "main"})}>
+            <Avatar emoji="🌍" color="#3b82f6" size={32} /> Global Chat
+          </div>
+          {Object.values(users).filter(u => u.uid !== userUid).map(u => (
+            <div key={u.uid} className="sidebar-row" onClick={() => onForward({type: "dm", id: u.uid})}>
+              <Avatar emoji={u.avatar} color={u.color} size={32} /> {u.name}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Auth Screen ── */
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState("login");
+  const [showPass, setShowPass] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", pass: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setError("");
+    if(!form.email || !form.pass) return;
+    if(mode === "register" && !form.name) return setError("Please enter your name.");
+    setLoading(true);
+    try {
+      if (mode === "register") {
+        const res = await auth.createUserWithEmailAndPassword(form.email, form.pass);
+        const ci = form.name.charCodeAt(0) % PALETTE.length;
+        const profile = { uid: res.user.uid, name: form.name.trim(), email: res.user.email, color: PALETTE[ci], avatar: AVATARS[ci % AVATARS.length], joinedAt: Date.now() };
+        await db.ref(`users/${res.user.uid}`).set(profile);
+        onAuth(profile);
+      } else {
+        const res = await auth.signInWithEmailAndPassword(form.email, form.pass);
+        const snap = await db.ref(`users/${res.user.uid}`).once("value");
+        if(snap.exists()) onAuth(snap.val());
+        else setError("Account record missing.");
+      }
+    } catch (e) { setError(e.message); setLoading(false); }
+  };
+  
+  return (
+    <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "var(--bg-chat)" }}>
+      <div style={{ width: "100%", maxWidth: 380, background: "var(--bg-input)", border:"1px solid rgba(255,255,255,0.05)", borderRadius: 24, padding: "40px 32px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        
+        <img src="pulsechat-logo.png" alt="PulseChat Logo" style={{ width: 72, height: 72, marginBottom: 16, borderRadius: 20, boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }} />
+        <h2 style={{ textAlign: "center", marginBottom: 8, fontSize: 32, fontWeight: 700, color: "white" }}>Pulse<span style={{color: "#6C63FF"}}>Chat</span></h2>
+        <div style={{ color: "var(--muted)", fontSize: 11, fontWeight: "bold", letterSpacing: 2, marginBottom: 32, textTransform: "uppercase" }}>
+          {mode === "login" ? "Welcome Back" : "Create Account"}
+        </div>
+        
+        <div style={{ width: "100%", display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: 4, marginBottom: 24 }}>
+          {["login", "register"].map(m => (
+            <button key={m} onClick={() => { setMode(m); setError(""); }}
+              style={{ flex: 1, padding: "10px", border: "none", borderRadius: 8, cursor: "pointer", background: mode === m ? "#6C63FF" : "transparent", color: mode === m ? "#fff" : "var(--muted)", fontWeight: "bold", fontSize: 13, transition: "all 0.2s" }}>
+              {m === "login" ? "Login" : "Register"}
+            </button>
+          ))}
+        </div>
+
+        {error && <div style={{ width: "100%", padding: "10px 14px", background: "rgba(239, 68, 68, 0.15)", color: "#fca5a5", fontSize: 13, borderRadius: 8, marginBottom: 16, border: "1px solid rgba(239,68,68,0.3)" }}>{error}</div>}
+        
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+          {mode === "register" && <input className="input-base" style={{background: "#1c1d24", border: "1px solid rgba(255,255,255,0.08)"}} placeholder="Display Name" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} />}
+          <input className="input-base" style={{background: "#1c1d24", border: "1px solid rgba(255,255,255,0.08)"}} placeholder="Email address" type="email" value={form.email} onChange={e=>setForm({...form, email:e.target.value})} />
+          <div style={{position: "relative"}}>
+            <input className="input-base" style={{background: "#1c1d24", border: "1px solid rgba(255,255,255,0.08)", paddingRight: 40}} placeholder="Password (min 6 chars)" type={showPass ? "text" : "password"} value={form.pass} onChange={e=>setForm({...form, pass:e.target.value})} onKeyDown={e=>e.key==="Enter"&&submit()} />
+            <button onClick={() => setShowPass(!showPass)} style={{position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 16}}>{showPass ? "🙈" : "👁"}</button>
+          </div>
+        </div>
+        
+        <button style={{ width: "100%", marginTop: 32, padding: "14px", fontSize: 14, fontWeight: "bold", background: "#6C63FF", color: "white", border: "none", borderRadius: 12, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }} onClick={submit} disabled={loading}>
+          {loading ? "AUTHENTICATING..." : (mode === "login" ? "LOGIN →" : "CREATE ACCOUNT →")}
+        </button>
+
+        <div style={{ marginTop: 24, fontSize: 13, color: "var(--muted)" }}>
+          {mode === "login" ? "No account? " : "Already have an account? "}
+          <span style={{color: "#6C63FF", cursor: "pointer", fontWeight: "bold"}} onClick={() => { setMode(mode==="login"?"register":"login"); setError(""); }}>
+            {mode === "login" ? "Register" : "Login"}
+          </span>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+/* ── Main Chat App ── */
+function ChatApp({ user, onSignOut }) {
+  const [activeChat, setActiveChat] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [users, setUsers] = useState({});
+  const [presence, setPresence] = useState({});
+  const [typing, setTyping] = useState([]);
+  
+  const [dmPreviews, setDmPreviews] = useState({});
+  const [unread, setUnread] = useState({});
+  const [search, setSearch] = useState("");
+  
+  const [input, setInput] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+  
+  const [viewImageObj, setViewImageObj] = useState(null);
+  const [shareMsgObj, setShareMsgObj] = useState(null);
+  const [actionMenu, setActionMenu] = useState(null);
+  
+  const bottomRef = useRef(null);
+  const activeChatRef = useRef(null);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => { const fn = () => setIsMobile(window.innerWidth < 768); window.addEventListener("resize", fn); return () => window.removeEventListener("resize", fn); }, []);
+  useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, uploading]);
+
+  useEffect(() => {
+    let initGroup = true;
+    const fnGroup = snap => {
+      const data = snap.val(); if(!data) return;
+      const last = Object.values(data)[0];
+      if (!initGroup && last.senderUid !== user.uid && (document.hidden || activeChatRef.current?.id !== "main")) showNotify(`Global Chat: ${last.senderName}`, { body: last.text || (last.fileUrl ? "Sent a file" : "") });
+      initGroup = false;
+    };
+    db.ref("groupMessages").limitToLast(1).on("value", fnGroup);
+    return () => db.ref("groupMessages").limitToLast(1).off("value", fnGroup);
+  }, []);
+
+  useEffect(() => {
+    const uids = Object.keys(users).filter(u => u !== user.uid);
+    const offs = [];
+    uids.forEach(uid => {
+      let initial = true;
+      const ref = db.ref(`dms/${dmKey(user.uid, uid)}`).limitToLast(1);
+      const fn = snap => {
+        const data = snap.val(); if(!data) return;
+        const last = Object.values(data)[0];
+        setDmPreviews(p => {
+          const isNew = !p[uid] || p[uid].id !== last.id;
+          if (!initial && isNew && last.senderUid !== user.uid && (document.hidden || activeChatRef.current?.id !== uid)) showNotify(`Message from ${last.senderName}`, { body: last.text || (last.fileUrl ? "Sent a file" : "") });
+          return { ...p, [uid]: last };
+        });
+        if (last.senderUid !== user.uid && activeChatRef.current?.id !== uid) setUnread(p => ({ ...p, [uid]: (p[uid]||0) + 1 }));
+        initial = false;
+      };
+      ref.on("value", fn); offs.push(() => ref.off("value", fn));
+    });
+    return () => offs.forEach(f => f());
+  }, [users]);
+
+  useEffect(() => {
+    db.ref(`presence/${user.uid}`).set(true);
+    db.ref(`presence/${user.uid}`).onDisconnect().remove();
+    db.ref("users").on("value", snap => setUsers(snap.val() || {}));
+    db.ref("presence").on("value", snap => setPresence(snap.val() || {}));
+  }, []);
+
+  useEffect(() => {
+    if (!activeChat) return;
+    const path = activeChat.type === "group" ? "groupMessages" : `dms/${dmKey(user.uid, activeChat.id)}`;
+    const ref = db.ref(path).limitToLast(150);
+    ref.on("value", snap => setMessages(Object.values(snap.val() || {}).sort((a,b) => a.ts - b.ts)));
+    setUnread(p => ({ ...p, [activeChat.id]: 0 }));
+    return () => ref.off();
+  }, [activeChat]);
+
+  // Typing state listener
+  useEffect(() => {
+    setTyping([]);
+    if (!activeChat) return;
+    const path = `typing/${activeChat.type === "group" ? "main" : dmKey(user.uid, activeChat.id)}`;
+    const ref = db.ref(path);
+    ref.on("value", snap => {
+       const vals = snap.val() || {};
+       const now = Date.now();
+       const typos = Object.entries(vals).filter(([k, v]) => k !== user.uid && (now - v < 5000)).map(([k])=>k);
+       setTyping(typos);
+    });
+    return () => ref.off();
+  }, [activeChat]);
+
+  let typingTimeout = useRef(null);
+  const handleInput = (val) => {
+    setInput(val);
+    if (!activeChat) return;
+    const path = `typing/${activeChat.type === "group" ? "main" : dmKey(user.uid, activeChat.id)}/${user.uid}`;
+    db.ref(path).set(firebase.database.ServerValue.TIMESTAMP || Date.now());
+    clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => db.ref(path).remove(), 3000);
+  };
+
+  const send = async (rawFile = null) => {
+    const text = input.trim();
+    if ((!text && !rawFile) || !activeChat || uploading) return;
+    setInput("");
+    if (activeChat) db.ref(`typing/${activeChat.type === "group" ? "main" : dmKey(user.uid, activeChat.id)}/${user.uid}`).remove();
+    
+    try { const p = Notification.requestPermission(); if (p && p.then) p.catch(()=>{}); } catch(e){}
+
+    let fileUrl = null, fileType = null, fileName = null;
+    if (rawFile) {
+      setUploading(true);
+      try {
+        const file = await compressImage(rawFile);
+        if (file.size > 6 * 1024 * 1024) throw new Error("File too large (6MB max)");
+        const b64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result);
+          reader.onerror = () => reject(new Error("Local read failed"));
+          reader.readAsDataURL(file);
+        });
+        fileUrl = b64; fileType = file.type; fileName = file.name;
+      } catch (e) {
+        alert("Upload failed! " + e.message); setUploading(false); return;
+      }
+      setUploading(false);
+    }
+    
+    const msg = { id: genId(), text, senderUid: user.uid, senderName: user.name, color: user.color, avatar: user.avatar, ts: Date.now(), ...(fileUrl ? { fileUrl, fileType, fileName } : {}) };
+    await db.ref(activeChat.type === "group" ? "groupMessages" : `dms/${dmKey(user.uid, activeChat.id)}`).push(msg);
+  };
+
+  const handleForward = async (chatTarget) => {
+    const baseMsg = { id: genId(), text: shareMsgObj.text || "", senderUid: user.uid, senderName: user.name, color: user.color, avatar: user.avatar, ts: Date.now(), ...(shareMsgObj.fileUrl ? { fileUrl: shareMsgObj.fileUrl, fileType: shareMsgObj.fileType, fileName: shareMsgObj.fileName } : {}) };
+    await db.ref(chatTarget.type === "group" ? "groupMessages" : `dms/${dmKey(user.uid, chatTarget.id)}`).push(baseMsg);
+    setShareMsgObj(null);
+  };
+
+  const filteredUsers = useMemo(() => Object.values(users).filter(u => u.uid !== user.uid && u.name?.toLowerCase().includes(search.toLowerCase())).sort((a, b) => (dmPreviews[b.uid]?.ts || 0) - (dmPreviews[a.uid]?.ts || 0)), [users, search, dmPreviews]);
+
+  const showingSidebar = isMobile ? !activeChat : true;
+  const showingChat    = isMobile ? !!activeChat : true;
+
+  const Sidebar = (
+    <div style={{ width: isMobile ? "100%" : 320, display: "flex", flexDirection: "column", flexShrink: 0, borderRight: "1px solid var(--border)", background: "var(--bg-sidebar)" }}>
+      <div style={{ padding: "env(safe-area-inset-top) 16px 16px", borderBottom: "1px solid var(--border)"}}>
+        <div style={{ padding: "16px 0", display: "flex", alignItems: "center", gap: 12 }}>
+          <Avatar emoji={user.avatar} color={user.color} size={44} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: "bold", fontSize: 16, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.name}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.email}</div>
+          </div>
+          <button onClick={onSignOut} style={{ background: "rgba(239,68,68,0.1)", color: "var(--danger)", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontWeight: "bold", fontSize: 12 }}>Sign out</button>
+        </div>
+        <div style={{ position: "relative" }}>
+          <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", fontSize: 14 }}>🔍</span>
+          <input className="input-base" style={{ paddingLeft: 38, borderRadius: 12 }} placeholder="Search people..." value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+      </div>
+      
+      <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+        <div style={{ padding: "12px 8px 6px", fontSize: 11, fontWeight: "bold", letterSpacing: 1.5, color: "var(--muted)" }}>CHANNELS</div>
+        <div className={`sidebar-row ${activeChat?.id === "main" ? "active" : ""}`} onClick={() => { setActiveChat({ type: "group", id: "main", name: "Global Chat", color: "#3b82f6", avatar: "🌐" }); setUnread(p => ({...p, main: 0})); }}>
+          <Avatar emoji="🌐" color="#3b82f6" size={40} shape="square" />
+          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: "bold", fontSize: 15 }}>Global Chat</div><div style={{ fontSize: 12, color: "var(--muted)" }}>Everyone can see this</div></div>
+        </div>
+
+        <div style={{ padding: "24px 8px 6px", fontSize: 11, fontWeight: "bold", letterSpacing: 1.5, color: "var(--muted)" }}>DIRECT MESSAGES</div>
+        {filteredUsers.map(u => {
+          const last = dmPreviews[u.uid];
+          const isUserOnline = !!presence[u.uid];
+          return (
+            <div key={u.uid} className={`sidebar-row ${activeChat?.id === u.uid ? "active" : ""}`} onClick={() => { setActiveChat({ type: "dm", id: u.uid, name: u.name, color: u.color, avatar: u.avatar }); setUnread(p => ({...p, [u.uid]: 0})); }}>
+              <div style={{position: "relative"}}>
+                <Avatar emoji={u.avatar} color={u.color} size={40} badge={unread[u.uid] || 0} />
+                <div style={{position:"absolute", bottom:0, right:0, width:14, height:14, borderRadius:"50%", background: isUserOnline ? "#10b981" : "var(--muted)", border:"2px solid var(--bg-sidebar)"}}></div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                  <span style={{ fontWeight: "bold", fontSize: 15, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}</span>
+                  {last && <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtTime(last.ts)}</span>}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--muted)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{last ? (last.senderUid === user.uid ? "You: " : "") + (last.text || "attachment") : "Joined"}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const ChatArea = (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
+      <div style={{ height: 60, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", padding: "0 16px", background: "var(--bg-chat)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {isMobile ? <button onClick={() => setActiveChat(null)} style={{ background: "transparent", border: "none", color: "#fff", fontSize: 24, cursor: "pointer" }}>←</button> : <button style={{ width: 40, height: 40, borderRadius: 8, background: "var(--bg-input)", border: "1px solid var(--border)", color: "#fff", fontSize: 20, cursor: "pointer" }}>≡</button>}
+          {activeChat && (
+            <>
+              <Avatar emoji={activeChat.avatar} color={activeChat.color} size={36} />
+              <div style={{lineHeight: 1.2}}>
+                <div style={{ fontWeight: "bold", fontSize: 15 }}>{activeChat.name}</div>
+                <div style={{ fontSize: 12, color: typing.length > 0 ? "var(--primary)" : "var(--muted)", fontWeight: typing.length > 0 ? "bold" : "normal" }}>
+                  {typing.length > 0 ? (activeChat.type === "group" ? (typing.length > 1 ? `${typing.length} people typing...` : `${users[typing[0]]?.name || 'Someone'} is typing...`) : "typing...") : (activeChat.type==="group"?"Public Room": (presence[activeChat.id] ? "Online" : "Offline"))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+          <NotificationBell />
+          <div style={{ fontSize: 11, fontWeight: "bold", color: "#10b981", display: "flex", alignItems: "center", gap: 6 }}><span style={{display: "block", width: 6, height: 6, borderRadius: 3, background: "#10b981"}}></span> LIVE</div>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "20px 24px" }}>
+        {!activeChat ? (
+          <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--muted)", textAlign: "center", padding: 40 }}>
+            <img src="pulsechat-logo.png" alt="PulseChat Logo" style={{ width: 96, height: 96, marginBottom: 24, borderRadius: 26, boxShadow: "0 12px 32px rgba(0,0,0,0.4)" }} />
+            <h2 style={{ fontSize: 32, color: "white", marginBottom: 16, fontFamily: 'Outfit, sans-serif' }}>Welcome to PulseChat</h2>
+            <p style={{ fontSize: 16, lineHeight: 1.6, maxWidth: 420 }}>Experience the next generation of real-time communication. Select a channel or direct message from the sidebar to begin your secure conversation.</p>
+          </div>
+        ) : (
+          <div key={activeChat.id} className="chat-transition">
+            {messages.map((item, i) => {
+              const isMe = item.senderUid === user.uid;
+              const prev = messages[i-1];
+              const showHead = !prev || prev.senderUid !== item.senderUid || item.ts - prev.ts > 300000;
+              return (
+                <div key={item.id} style={{ display: "flex", flexDirection: isMe ? "row-reverse" : "row", alignItems: "flex-start", gap: 12, marginTop: showHead ? 16 : 4 }}>
+                  {!isMe && (showHead ? <Avatar emoji={item.avatar} color={item.color} size={36}/> : <div style={{width: 36, flexShrink: 0}}/>)}
+                  
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start", maxWidth: "75%" }}>
+                    {showHead && !isMe && <div style={{ fontSize: 13, fontWeight: "bold", color: item.color, marginBottom: 4, marginLeft: 2, display: "flex", alignItems: "baseline", gap: 8 }}>{item.senderName} <span style={{color:"var(--muted)", fontWeight:400, fontSize: 11}}>{fmtTime(item.ts)}</span></div>}
+                    <div className={`chat-bubble ${isMe ? "me" : "them"}`}>
+                      {item.text && <div style={{ marginBottom: item.fileUrl ? 8 : 0 }}>{item.text}</div>}
+                      {item.fileUrl && (
+                        item.fileType?.startsWith("image/") ? (
+                          <div style={{position: "relative", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", cursor: "pointer", background:"var(--bg-hover)"}}>
+                             <img src={item.fileUrl} onClick={() => setViewImageObj(item)} alt="attachment" style={{ display: "block", maxWidth: "100%", maxHeight: 250, objectFit: "contain" }} />
+                          </div>
+                        ) : (
+                          <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8, border: "1px solid var(--border)", width: "fit-content" }}>
+                            <span style={{fontSize: 20}}>📄</span>
+                            <span style={{ fontSize: 14, maxWidth: 200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.fileName || "File"}</span>
+                            <button onClick={(e) => { e.preventDefault(); setActionMenu({msg: item, x: e.clientX, y: e.clientY}); }} className="action-btn">⋮</button>
+                          </div>
+                        )
+                      )}
+                    </div>
+                    {isMe && showHead && <div style={{ fontSize: 11, color: "var(--muted)", textAlign: "right", marginTop: 4 }}>{fmtTime(item.ts)}</div>}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef} style={{ height: 1 }} />
+          </div>
+        )}
+      </div>
+
+      {activeChat && (
+        <div style={{ padding: "0 16px 16px", background: "var(--bg-chat)" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "var(--bg-input)", padding: 6, borderRadius: 16, border: "1px solid var(--border)" }}>
+            <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ width: 44, height: 44, borderRadius: 12, border: "none", background: "transparent", color: "var(--muted)", fontSize: 20, cursor: "pointer" }}>📎</button>
+            <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={e => { if(e.target.files[0]) send(e.target.files[0]); e.target.value = null; }} />
+            <textarea value={input} onChange={e => handleInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder={`Message ${activeChat.name}...`} rows={1} style={{ flex: 1, padding: "12px 0", background: "transparent", border: "none", color: "white", fontSize: 15, outline: "none", resize: "none", maxHeight: 100 }} />
+            {uploading && <span className="animate-spin" style={{alignSelf: "center", color: "var(--muted)", marginRight: 16}}>⟳</span>}
+          </div>
+        </div>
+      )}
+      
+      <Lightbox msg={viewImageObj} onClose={() => setViewImageObj(null)} onForward={(msg)=>{setShareMsgObj(msg); setViewImageObj(null);}} />
+      <ActionDropdown menu={actionMenu} onClose={() => setActionMenu(null)} onForward={(msg)=>{setShareMsgObj(msg); setActionMenu(null);}} />
+      <ShareModal msg={shareMsgObj} users={users} userUid={user.uid} onClose={() => setShareMsgObj(null)} onForward={handleForward} />
+    </div>
+  );
+
+  return <div style={{ height: "100%", display: "flex", position: "relative" }}>{isMobile ? (showingSidebar ? Sidebar : ChatArea) : (<>{Sidebar}{ChatArea}</>)}</div>;
+}
+
+function Root() {
+  const [user, setUser] = useState(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    if (!isReady || !auth) { setChecking(false); return; }
+    return auth.onAuthStateChanged(async fbUser => {
+      if (fbUser) { try { const snap = await db.ref(`users/${fbUser.uid}`).once("value"); setUser(snap.val() || null); } catch { setUser(null); } } else setUser(null);
+      setChecking(false);
+    });
+  }, []);
+
+  if (!isReady) return <div>Setup Required</div>;
+  if (checking) return null;
+  if (!user) return <AuthScreen onAuth={setUser} />;
+  return <ChatApp user={user} onSignOut={() => { auth.signOut(); setUser(null); }} />;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
+</script>
+</body>
+</html>
